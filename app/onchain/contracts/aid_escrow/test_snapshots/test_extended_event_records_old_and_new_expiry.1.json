@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "10000"
+                  "i128": "100000000"
                 }
               ]
             }
@@ -64,7 +64,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "5000"
+                  "i128": "50000000"
                 }
               ]
             }
@@ -83,7 +83,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                     },
                     {
-                      "i128": "5000"
+                      "i128": "50000000"
                     }
                   ]
                 }
@@ -113,13 +113,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -396,7 +399,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -441,7 +444,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -450,6 +461,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -506,7 +525,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -556,6 +575,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_expires_in"
                               },
                               "val": {
@@ -584,7 +611,7 @@
                                 "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                               },
                               "val": {
-                                "i128": "1000"
+                                "i128": "10000000"
                               }
                             }
                           ]
@@ -666,7 +693,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "5000"
+                        "i128": "50000000"
                       }
                     },
                     {
@@ -736,7 +763,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "5000"
+                        "i128": "50000000"
                       }
                     },
                     {
@@ -924,14 +951,6 @@
                 },
                 {
                   "key": {
-                    "symbol": "id"
-                  },
-                  "val": {
-                    "u64": "42"
-                  }
-                },
-                {
-                  "key": {
                     "symbol": "new_expires_at"
                   },
                   "val": {
@@ -944,6 +963,14 @@
                   },
                   "val": {
                     "u64": "86400"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "package_id"
+                  },
+                  "val": {
+                    "u64": "42"
                   }
                 }
               ]

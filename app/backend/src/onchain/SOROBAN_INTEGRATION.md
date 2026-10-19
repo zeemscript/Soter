@@ -4,6 +4,11 @@
 
 This implementation provides a complete backend service layer for the Soroban AidEscrow contract. It abstracts away the complexity of blockchain interactions and provides a clean REST API for clients.
 
+For the current status of every public AidEscrow function, see the
+[backend coverage inventory](../../../onchain/contracts/aid_escrow/BACKEND_COVERAGE.md).
+Update that inventory in the same change whenever adapter coverage or a
+contract public function changes.
+
 ## Architecture
 
 ### Layers
@@ -81,6 +86,8 @@ Maps Soroban contract errors to standardized backend errors.
 | PackageNotFound | 404 | Package not found |
 | PackageExpired | 410 | Package has expired |
 | ContractPaused | 503 | Contract is paused |
+| InvalidToken | 400 | Invalid token contract address |
+| TokenTransferFailed | 502 | Token transfer failed |
 
 #### 5. **AidEscrowService** (`aid-escrow.service.ts`)
 

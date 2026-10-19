@@ -47,6 +47,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "claim_cooldown"
+                      },
+                      "val": {
+                        "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "max_expires_in"
                       },
                       "val": {
@@ -83,7 +91,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "i128": "50"
+                  "i128": "5000000"
                 }
               ]
             }
@@ -278,6 +286,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_expires_in"
                               },
                               "val": {
@@ -355,7 +371,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "50"
+                        "i128": "5000000"
                       }
                     },
                     {

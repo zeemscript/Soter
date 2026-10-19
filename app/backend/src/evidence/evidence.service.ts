@@ -1,12 +1,12 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { AppException, ERROR_CODES } from '../common/dto/error-response.dto';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import { AuditService } from '../audit/audit.service';
+import { FingerprintService } from './fingerprint.service';
+import { StorageService } from './storage/storage.service';
+import { StorageError } from './storage/storage.errors';
+import { MetricsService } from '../observability/metrics/metrics.service';
 import * as fs from 'fs/promises';
 import { existsSync, mkdirSync } from 'fs';
 import * as path from 'path';
@@ -22,46 +22,135 @@ export class EvidenceService {
     private readonly prisma: PrismaService,
     private readonly encryptionService: EncryptionService,
     private readonly auditService: AuditService,
+    private readonly fingerprintService: FingerprintService,
+    private readonly storageService: StorageService,
+    private readonly metricsService: MetricsService,
   ) {
-    // Ensure upload directory exists
+    // Ensure staging directory exists (encrypted bytes land here before the
+    // durable upload to the configured StorageDriver).
     if (!existsSync(this.uploadDir)) {
       mkdirSync(this.uploadDir, { recursive: true });
     }
   }
 
-  async queueEvidence(file: Express.Multer.File, ownerId: string) {
+  async queueEvidence(
+    file: Express.Multer.File,
+    ownerId: string,
+    orgId?: string,
+  ) {
     const fileHash = crypto
       .createHash('sha256')
       .update(file.buffer)
       .digest('hex');
 
-    // Check for duplicate upload
-    const existing = await this.prisma.evidenceQueueItem.findUnique({
-      where: { fileHash },
+    // Generate stable fingerprint for near-duplicate detection
+    const fingerprint = this.fingerprintService.generateFileFingerprint(
+      file.buffer,
+    );
+
+    // Check for exact duplicate within org scope
+    const orgScopeFilter = orgId ? { orgId } : {};
+    const existingExact = await this.prisma.evidenceQueueItem.findFirst({
+      where: {
+        fileHash,
+        ...orgScopeFilter,
+      },
     });
 
-    if (existing) {
-      this.logger.warn(`Duplicate upload detected for hash ${fileHash}`);
-      throw new BadRequestException('File already exists in queue');
+    if (existingExact) {
+      this.logger.warn(
+        `Exact duplicate upload detected for hash ${fileHash} in org ${orgId}`,
+      );
+      await this.auditService.record({
+        actorId: ownerId,
+        entity: 'evidence_queue',
+        entityId: existingExact.id,
+        action: 'duplicate_upload_rejected',
+        metadata: {
+          fileName: file.originalname,
+          size: file.size,
+          duplicateOf: existingExact.id,
+          orgId,
+        },
+      });
+      throw new AppException(
+        ERROR_CODES.BAD_REQUEST,
+        400,
+        'File already exists in queue for this organization',
+      );
+    }
+
+    // Check for near-duplicates within org scope
+    const existingNear = await this.prisma.evidenceQueueItem.findFirst({
+      where: {
+        fingerprint,
+        ...orgScopeFilter,
+        nearDuplicateOf: null, // Only check against original items
+      },
+    });
+
+    if (existingNear) {
+      this.logger.warn(
+        `Near-duplicate upload detected for fingerprint ${fingerprint} in org ${orgId}`,
+      );
+
+      // Create a near-duplicate record that references the original
+      const nearDuplicateItem = await this.prisma.evidenceQueueItem.create({
+        data: {
+          fileName: file.originalname,
+          filePath: null, // Don't store duplicate files
+          fileHash,
+          fingerprint,
+          mimeType: file.mimetype,
+          size: file.size,
+          ownerId,
+          orgId,
+          status: EvidenceStatus.completed, // Mark as completed since it's a duplicate
+          nearDuplicateOf: existingNear.id,
+          metadata: {
+            isNearDuplicate: true,
+            originalId: existingNear.id,
+          },
+        },
+      });
+
+      await this.auditService.record({
+        actorId: ownerId,
+        entity: 'evidence_queue',
+        entityId: nearDuplicateItem.id,
+        action: 'near_duplicate_upload',
+        metadata: {
+          fileName: file.originalname,
+          size: file.size,
+          nearDuplicateOf: existingNear.id,
+          orgId,
+        },
+      });
+
+      return nearDuplicateItem;
     }
 
     // Encrypt file buffer
     const encryptedBuffer = this.encryptionService.encryptBuffer(file.buffer);
 
-    // Save to disk
-    const fileName = `${crypto.randomUUID()}.enc`;
-    const filePath = path.join(this.uploadDir, fileName);
-    await fs.writeFile(filePath, encryptedBuffer);
+    // Stage the encrypted bytes locally before the durable upload runs
+    // asynchronously in processUpload.
+    const stagingName = `${crypto.randomUUID()}.enc`;
+    const stagingPath = path.join(this.uploadDir, stagingName);
+    await fs.writeFile(stagingPath, encryptedBuffer);
 
-    // Create DB record
+    // Create DB record (no durable key yet)
     const item = await this.prisma.evidenceQueueItem.create({
       data: {
         fileName: file.originalname,
-        filePath,
+        filePath: stagingPath,
+        storageKey: null,
         fileHash,
+        fingerprint,
         mimeType: file.mimetype,
         size: file.size,
         ownerId,
+        orgId,
         status: EvidenceStatus.pending,
       },
     });
@@ -71,7 +160,7 @@ export class EvidenceService {
       entity: 'evidence_queue',
       entityId: item.id,
       action: 'queue_upload',
-      metadata: { fileName: file.originalname, size: file.size },
+      metadata: { fileName: file.originalname, size: file.size, orgId },
     });
 
     // Start upload process asynchronously
@@ -86,6 +175,8 @@ export class EvidenceService {
     });
 
     if (!item || item.status === EvidenceStatus.completed) return;
+    // Already durably stored (e.g. retried upload that succeeded).
+    if (item.storageKey) return;
 
     this.logger.log(`Processing upload for ${item.id}`);
 
@@ -95,29 +186,71 @@ export class EvidenceService {
     });
 
     try {
-      // MOCK: Simulate upload to S3/Cloud Storage
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const stagingPath = item.filePath;
+      if (!stagingPath) {
+        throw new Error('Missing staging file path for evidence upload');
+      }
 
-      // Simulate success
+      const encryptedBuffer = await fs.readFile(stagingPath);
+
+      // Upload to the configured StorageDriver. This resolves with a real,
+      // retrievable storage key or throws a typed StorageError on failure
+      // (never a silent success).
+      const storageKey = await this.storageService.upload(
+        this.storageService.generateKey(item.orgId),
+        encryptedBuffer,
+      );
+
       await this.prisma.evidenceQueueItem.update({
         where: { id },
-        data: { status: EvidenceStatus.completed },
+        data: { status: EvidenceStatus.completed, storageKey },
       });
 
-      this.logger.log(`Upload completed for ${item.id}`);
-    } catch (err) {
-      this.logger.error(
-        `Upload failed for ${item.id}: ${(err as Error).message}`,
+      // SLA: time from intake (queued) to a terminal decision (completed).
+      this.metricsService.recordEvidenceIntakeToDecisionDuration(
+        EvidenceStatus.completed,
+        (Date.now() - item.createdAt.getTime()) / 1000,
       );
+
+      // Remove the staging file now that the durable copy exists.
+      try {
+        await fs.unlink(stagingPath);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to remove staging file ${stagingPath}: ${(err as Error).message}`,
+        );
+      }
+
+      this.logger.log(
+        `Upload completed for ${item.id} (key=${storageKey}, driver=${this.storageService.driverType})`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof StorageError
+          ? `${err.name}: ${err.message}`
+          : (err as Error).message;
+
+      this.logger.error(`Upload failed for ${item.id}: ${message}`);
 
       await this.prisma.evidenceQueueItem.update({
         where: { id },
         data: {
           status: EvidenceStatus.failed,
           retryCount: { increment: 1 },
-          lastError: (err as Error).message,
+          lastError: message,
         },
       });
+
+      // SLA: time from intake (queued) to a terminal decision (failed).
+      this.metricsService.recordEvidenceIntakeToDecisionDuration(
+        EvidenceStatus.failed,
+        (Date.now() - item.createdAt.getTime()) / 1000,
+      );
+
+      // Re-throw so callers (and tests) can assert on the typed failure.
+      throw err instanceof StorageError
+        ? err
+        : new Error(`Evidence upload failed: ${message}`);
     }
   }
 
@@ -133,10 +266,19 @@ export class EvidenceService {
       where: { id, ownerId },
     });
 
-    if (!item) throw new NotFoundException('Queue item not found');
+    if (!item)
+      throw new AppException(
+        ERROR_CODES.NOT_FOUND,
+        404,
+        'Queue item not found',
+      );
 
     if (item.status === EvidenceStatus.completed) {
-      throw new BadRequestException('Item already uploaded');
+      throw new AppException(
+        ERROR_CODES.BAD_REQUEST,
+        400,
+        'Item already uploaded',
+      );
     }
 
     await this.prisma.evidenceQueueItem.update({
@@ -154,15 +296,31 @@ export class EvidenceService {
       where: { id, ownerId },
     });
 
-    if (!item) throw new NotFoundException('Queue item not found');
+    if (!item)
+      throw new AppException(
+        ERROR_CODES.NOT_FOUND,
+        404,
+        'Queue item not found',
+      );
 
-    // Delete local file if it exists
+    // Delete the durably stored artifact from the StorageDriver, if present.
+    if (item.storageKey) {
+      try {
+        await this.storageService.remove(item.storageKey);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete stored artifact ${item.storageKey}: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    // Clean up any remaining staging file.
     if (item.filePath) {
       try {
         await fs.unlink(item.filePath);
       } catch (err) {
         this.logger.warn(
-          `Failed to delete file ${item.filePath}: ${(err as Error).message}`,
+          `Failed to delete staging file ${item.filePath}: ${(err as Error).message}`,
         );
       }
     }

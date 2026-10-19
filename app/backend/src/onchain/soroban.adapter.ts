@@ -1,6 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import {
+  rpc as SorobanRpc,
+  Contract,
+  nativeToScVal,
+  scValToNative,
+  TransactionBuilder,
+  Keypair,
+  BASE_FEE,
+  xdr,
+} from '@stellar/stellar-sdk';
 import {
   OnchainAdapter,
   InitEscrowParams,
@@ -17,390 +26,1235 @@ import {
   ClaimAidPackageResult,
   DisburseAidPackageParams,
   DisburseAidPackageResult,
+  ExtendAidPackageExpiryParams,
+  ExtendAidPackageExpiryResult,
   GetAidPackageParams,
   GetAidPackageResult,
   GetAidPackageCountParams,
   GetAidPackageCountResult,
+  GetCampaignTokenTotalsParams,
+  GetCampaignTokenTotalsResult,
   AidPackage,
   GetTokenBalanceParams,
   GetTokenBalanceResult,
+  ContractMetadata,
+  PauseState,
+  FeeConfig,
+  PackageSummary,
+  GetTransactionStatusParams,
+  GetTransactionStatusResult,
+  TxStatus,
+  ContractVersionParams,
+  MigrateContractParams,
+  MigrateContractResult,
+  AdminState,
+  AdminTransferParams,
+  AdminTransferResult,
+  TransferAdminParams,
+  PendingWithdrawal,
+  ProposeSurplusWithdrawalParams,
+  SurplusWithdrawalParams,
+  SurplusWithdrawalResult,
+  SetDelegateParams,
+  SetDelegateResult,
+  RevokeDelegateParams,
+  RevokeDelegateResult,
+  GetDelegateParams,
+  GetDelegateResult,
+  GetDelegateHistoryParams,
+  GetDelegateHistoryResult,
+  DelegateHistoryEntry,
 } from './onchain.adapter';
 import { SorobanErrorMapper } from './utils/soroban-error.mapper';
+import { withRetryTimeout } from './utils/retry-with-timeout';
+import {
+  parsePendingWithdrawal,
+  timelockRemainingSeconds,
+} from './utils/pending-withdrawal';
+import {
+  isSurplusWithdrawalTimelockError,
+  SurplusWithdrawalTimelockNotElapsedError,
+} from './utils/surplus-withdrawal.errors';
+import {
+  Aggregates,
+  Package,
+  PackageStatus,
+} from './generated/aid-escrow.contract';
+import { getNetworkProfile } from 'src/config/network.config';
 
 /**
- * Soroban adapter implementation for AidEscrow contract
- * Handles all interactions with the Soroban AidEscrow contract via RPC
+ * Maps the contract's `PackageStatus` enum (generated from the on-chain spec)
+ * onto the backend's camel-cased status strings. Typed as a complete
+ * `Record`, so adding a status to the contract fails to compile here until the
+ * backend knows how to present it.
  */
+const PACKAGE_STATUS_LABELS: Record<PackageStatus, AidPackage['status']> = {
+  [PackageStatus.Created]: 'Created',
+  [PackageStatus.Claimed]: 'Claimed',
+  [PackageStatus.Expired]: 'Expired',
+  [PackageStatus.Cancelled]: 'Cancelled',
+  [PackageStatus.Refunded]: 'Refunded',
+};
+
+function labelForStatusCode(code: number): AidPackage['status'] {
+  const match = Object.entries(PACKAGE_STATUS_LABELS).find(
+    ([statusCode]) => Number(statusCode) === code,
+  );
+  return match ? match[1] : 'Created';
+}
+
 @Injectable()
 export class SorobanAdapter implements OnchainAdapter {
   private readonly logger = new Logger(SorobanAdapter.name);
-  private contractId: string;
-  private rpcUrl: string;
-  private networkPassphrase: string;
-  private errorMapper: SorobanErrorMapper;
-
-  // Note: The actual Soroban SDK will be lazily imported when needed
-  // to avoid bundle size issues in development builds
-  private sorobanLib: Record<string, any> | null = null;
+  private readonly contractId: string;
+  private readonly rpcUrl: string;
+  private readonly networkPassphrase: string;
+  private readonly network: string;
+  private readonly adminSecretKey: string;
+  private readonly errorMapper: SorobanErrorMapper;
+  private server: SorobanRpc.Server | null = null;
+  private keypair: Keypair | null = null;
 
   constructor(private configService: ConfigService) {
-    this.contractId = this.configService.get<string>('SOROBAN_CONTRACT_ID', '');
+    this.contractId = this.configService.get<string>(
+      'AID_ESCROW_CONTRACT_ID',
+      '',
+    );
+    this.network = this.configService.get<string>('SOROBAN_NETWORK', 'testnet');
+    const networkProfile = getNetworkProfile(this.network);
     this.rpcUrl = this.configService.get<string>(
       'STELLAR_RPC_URL',
-      'https://soroban-testnet.stellar.org',
+      networkProfile.defaultRpcUrl,
     );
     this.networkPassphrase = this.configService.get<string>(
       'STELLAR_NETWORK_PASSPHRASE',
-      'Test SDF Network ; September 2015',
+      networkProfile.passphrase,
+    );
+    this.adminSecretKey = this.configService.get<string>(
+      'SOROBAN_ADMIN_SECRET_KEY',
+      '',
     );
     this.errorMapper = new SorobanErrorMapper();
-
-    if (!this.contractId) {
-      this.logger.warn(
-        'SOROBAN_CONTRACT_ID not configured. SorobanAdapter will not function.',
-      );
-    }
   }
 
-  private async loadSorobanSDK() {
-    if (this.sorobanLib) {
-      return this.sorobanLib;
-    }
-
-    try {
-      // Dynamically import stellar/cli SDK
-      // @ts-expect-error - stellar is optional, only required in production
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const mod = await import('stellar');
-      this.sorobanLib = {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        rpc: mod,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        api: mod,
-        ...(mod as Record<string, any>),
-      };
-      return this.sorobanLib;
-    } catch (error) {
-      this.logger.error('Failed to load Soroban SDK:', error);
+  private validateConfig(): void {
+    if (
+      !this.contractId ||
+      !this.contractId.startsWith('C') ||
+      this.contractId.length !== 56
+    ) {
       throw new Error(
-        'Soroban SDK not available. Install: npm install stellar',
+        'AID_ESCROW_CONTRACT_ID is missing or invalid. Must be a 56-char Soroban contract ID starting with "C".',
       );
     }
-  }
-
-  /**
-   * Creates RPC client for contract calls
-   */
-  private async getRpcClient() {
-    const sdk = await this.loadSorobanSDK();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
-    return new sdk.SorobanRpc.Server(this.rpcUrl, {
-      allowHttp: this.rpcUrl.startsWith('http://'),
-    });
-  }
-
-  /**
-   * Validates that contract ID is configured
-   */
-  private ensureContractId(): void {
-    if (!this.contractId) {
+    if (!this.adminSecretKey) {
       throw new Error(
-        'SOROBAN_CONTRACT_ID is not configured. Cannot proceed with contract calls.',
+        'SOROBAN_ADMIN_SECRET_KEY is not configured. Required for signing Soroban transactions.',
       );
     }
+    const expectedProfile = getNetworkProfile(this.network);
+    if (this.networkPassphrase !== expectedProfile.passphrase) {
+      throw new Error(
+        `Cross-network mismatch: STELLAR_NETWORK_PASSPHRASE does not match the ` +
+          `${this.network} passphrase.`,
+      );
+    }
+    const conflictingKeyword = expectedProfile.foreignRpcKeywords.find(
+      keyword => this.rpcUrl.toLowerCase().includes(keyword),
+    );
+    if (conflictingKeyword) {
+      throw new Error(
+        `Cross-network mismatch: STELLAR_RPC_URL (${this.rpcUrl}) looks like a ` +
+          `${conflictingKeyword} endpoint, but SOROBAN_NETWORK is "${this.network}".`,
+      );
+    }
+  }
+
+  private getServer(): SorobanRpc.Server {
+    if (!this.server) {
+      this.server = new SorobanRpc.Server(this.rpcUrl, {
+        allowHttp: this.rpcUrl.startsWith('http://'),
+      });
+    }
+    return this.server;
+  }
+
+  private getKeypair(): Keypair {
+    if (!this.keypair) {
+      this.keypair = Keypair.fromSecret(this.adminSecretKey);
+    }
+    return this.keypair;
+  }
+
+  private ensureConfigured(): void {
+    if (!this.contractId) {
+      throw new Error('AID_ESCROW_CONTRACT_ID not configured.');
+    }
+    this.validateConfig();
+  }
+
+  private correlationId(): string {
+    return `testnet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private async submitContractOp(
+    method: string,
+    args: xdr.ScVal[],
+    correlationId: string,
+    contractId = this.contractId,
+  ): Promise<{ hash: string; result: any }> {
+    const server = this.getServer();
+    const kp = this.getKeypair();
+    const contract = new Contract(contractId);
+    const pubKey = kp.publicKey();
+
+    const account = await withRetryTimeout(
+      () => server.getAccount(pubKey),
+      `getAccount(${pubKey})`,
+      correlationId,
+      {},
+      this.logger,
+    );
+
+    const operation = contract.call(method, ...args);
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    const simulation = await withRetryTimeout(
+      () => server.simulateTransaction(tx),
+      `simulateTransaction(${method})`,
+      correlationId,
+      {},
+      this.logger,
+    );
+
+    if (SorobanRpc.Api.isSimulationError(simulation)) {
+      const errorMsg =
+        simulation.error ?? 'Simulation failed with no error message';
+      this.logger.error(
+        `[${correlationId}] Simulation error for ${method}: ${errorMsg}`,
+      );
+      throw new Error(`Contract simulation error: ${errorMsg}`);
+    }
+
+    const preparedTx = SorobanRpc.assembleTransaction(tx, simulation).build();
+    preparedTx.sign(kp);
+
+    const sendResult = await withRetryTimeout(
+      () => server.sendTransaction(preparedTx),
+      `sendTransaction(${method})`,
+      correlationId,
+      {},
+      this.logger,
+    );
+
+    if (sendResult.status === 'PENDING' || sendResult.status === 'DUPLICATE') {
+      const hash = sendResult.hash.toUpperCase();
+      const receipt = await withRetryTimeout(
+        async () => {
+          const getResult = await server.getTransaction(hash);
+          if (
+            getResult.status === SorobanRpc.Api.GetTransactionStatus.NOT_FOUND
+          ) {
+            throw new Error('Transaction not yet confirmed');
+          }
+          return getResult;
+        },
+        `pollTransaction(${method})`,
+        correlationId,
+        {
+          maxRetries: 10,
+          baseDelayMs: 2000,
+          maxDelayMs: 30000,
+          operationTimeoutMs: 120000,
+        },
+        this.logger,
+      );
+
+      if (receipt.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
+        const contractErr = this.extractContractError(receipt);
+        throw new Error(contractErr);
+      }
+
+      const retval: unknown = receipt.returnValue
+        ? scValToNative(receipt.returnValue)
+        : null;
+
+      return { hash, result: retval };
+    }
+
+    throw new Error(
+      `Transaction submission failed with status: ${sendResult.status}`,
+    );
+  }
+
+  private async simulateReadOnly(
+    method: string,
+    args: xdr.ScVal[],
+    correlationId: string,
+    contractId = this.contractId,
+  ): Promise<unknown> {
+    const server = this.getServer();
+    const kp = this.getKeypair();
+    const contract = new Contract(contractId);
+    const pubKey = kp.publicKey();
+
+    const account = await withRetryTimeout(
+      () => server.getAccount(pubKey),
+      `getAccount(${pubKey})`,
+      correlationId,
+      {},
+      this.logger,
+    );
+
+    const operation = contract.call(method, ...args);
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    const simulation = await withRetryTimeout(
+      () => server.simulateTransaction(tx),
+      `simulateReadOnly(${method})`,
+      correlationId,
+      {},
+      this.logger,
+    );
+
+    if (SorobanRpc.Api.isSimulationError(simulation)) {
+      const errorMsg = simulation.error ?? 'Simulation failed';
+      throw new Error(`Contract simulation error: ${errorMsg}`);
+    }
+
+    if (SorobanRpc.Api.isSimulationSuccess(simulation)) {
+      if (simulation.result?.retval) {
+        return scValToNative(simulation.result.retval) as unknown;
+      }
+    }
+
+    return null;
+  }
+
+  private extractContractError(receipt: any): string {
+    if (receipt?.result?.retval) {
+      try {
+        const val: unknown = scValToNative(receipt.result.retval);
+        if (typeof val === 'object' && val !== null) {
+          return JSON.stringify(val);
+        }
+        return String(val);
+      } catch {
+        // fall through
+      }
+    }
+    return 'Contract transaction failed';
+  }
+
+  private scvAddress(address: string): xdr.ScVal {
+    return nativeToScVal(address, { type: 'address' });
+  }
+
+  private scvI128(amount: string | number): xdr.ScVal {
+    return nativeToScVal(amount.toString(), { type: 'i128' });
+  }
+
+  private scvU64(value: number | bigint): xdr.ScVal {
+    return nativeToScVal(Number(value), { type: 'u64' });
+  }
+
+  private scvU32(value: number): xdr.ScVal {
+    return nativeToScVal(value, { type: 'u32' });
+  }
+
+  private scvSymbol(value: string): xdr.ScVal {
+    return nativeToScVal(value, { type: 'symbol' });
+  }
+
+  private scvString(value: string): xdr.ScVal {
+    return nativeToScVal(value, { type: 'string' });
+  }
+
+  private scvVec(items: xdr.ScVal[]): xdr.ScVal {
+    return nativeToScVal(items, { type: 'vec' });
+  }
+
+  private scvMap(entries: Record<string, string>): xdr.ScVal {
+    const mapVal: { key: xdr.ScVal; value: xdr.ScVal }[] = [];
+    for (const [k, v] of Object.entries(entries)) {
+      mapVal.push({
+        key: this.scvSymbol(k),
+        value: this.scvString(v),
+      });
+    }
+    return nativeToScVal(mapVal, { type: 'map' });
+  }
+
+  private parsePackage(scv: unknown): AidPackage | null {
+    if (!scv || typeof scv !== 'object') return null;
+    const data = scv as Partial<Package>;
+    return {
+      id: String(data.id ?? ''),
+      recipient: String(data.recipient ?? ''),
+      amount: String(data.amount ?? '0'),
+      token: String(data.token ?? ''),
+      status: this.parseStatus(data.status),
+      createdAt: Number(data.created_at ?? 0),
+      expiresAt: Number(data.expires_at ?? 0),
+      metadata: this.parseMetadata(data.metadata),
+    };
+  }
+
+  private parseMetadata(
+    metadata: Package['metadata'] | undefined,
+  ): Record<string, string> | undefined {
+    if (metadata === undefined) return undefined;
+    const entries =
+      metadata instanceof Map
+        ? Array.from(metadata.entries())
+        : Object.entries(metadata);
+    return Object.fromEntries(
+      entries.map(([key, value]) => [String(key), String(value)]),
+    );
+  }
+
+  private parseStatus(status: unknown): AidPackage['status'] {
+    if (typeof status === 'number') {
+      return labelForStatusCode(status);
+    }
+    if (typeof status === 'string') {
+      if (
+        ['Created', 'Claimed', 'Expired', 'Cancelled', 'Refunded'].includes(
+          status,
+        )
+      ) {
+        return status as AidPackage['status'];
+      }
+    }
+    return 'Created';
   }
 
   async initEscrow(params: InitEscrowParams): Promise<InitEscrowResult> {
-    this.ensureContractId();
-    this.logger.debug('Initializing escrow with admin:', params.adminAddress);
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] initEscrow admin=${params.adminAddress}`);
 
-    try {
-      const _sdk = await this.loadSorobanSDK();
+    const { hash } = await this.submitContractOp(
+      'init',
+      [this.scvAddress(params.adminAddress)],
+      cid,
+    );
 
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
-
-      // Note: Actual implementation would require signing the transaction
-      // with the contract owner's keypair and submitting to the network.
-      // This is a simplified version showing the structure.
-
-      const transactionHash = this.generateMockHash(
-        `init-${params.adminAddress}-${Date.now()}`,
-      );
-
-      return {
-        escrowAddress: this.contractId,
-        transactionHash,
-        timestamp: new Date(),
-        status: 'success',
-        metadata: {
-          contractId: this.contractId,
-          rpcUrl: this.rpcUrl,
-        },
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to init escrow:', mappedError);
-      throw error;
-    }
+    return {
+      escrowAddress: this.contractId,
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      metadata: { contractId: this.contractId },
+    };
   }
 
   async createAidPackage(
     params: CreateAidPackageParams,
   ): Promise<CreateAidPackageResult> {
-    this.ensureContractId();
-    this.logger.debug('Creating aid package:', {
-      packageId: params.packageId,
-      recipient: params.recipientAddress,
-      amount: params.amount,
-    });
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] createAidPackage id=${params.packageId}`);
 
-    try {
-      const _sdk = await this.loadSorobanSDK();
+    const metadata = params.metadata ?? {};
+    const metadataScv = this.scvMap(metadata);
 
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+    const { hash, result } = await this.submitContractOp(
+      'create_package',
+      [
+        this.scvAddress(params.operatorAddress),
+        this.scvU64(parseInt(params.packageId, 10)),
+        this.scvAddress(params.recipientAddress),
+        this.scvI128(params.amount),
+        this.scvAddress(params.tokenAddress),
+        this.scvU64(params.expiresAt),
+        metadataScv,
+      ],
+      cid,
+    );
 
-      // Implementation would call contract's create_package method
-      // This is a placeholder showing the expected response
-
-      const transactionHash = this.generateMockHash(
-        `create-${params.packageId}-${Date.now()}`,
-      );
-
-      return {
-        packageId: params.packageId,
-        transactionHash,
-        timestamp: new Date(),
-        status: 'success',
-        metadata: {
-          contractId: this.contractId,
-          operator: params.operatorAddress,
-        },
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to create aid package:', mappedError);
-      throw error;
-    }
+    return {
+      packageId: String(result ?? params.packageId),
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      metadata: {
+        contractId: this.contractId,
+        operator: params.operatorAddress,
+      },
+    };
   }
 
   async batchCreateAidPackages(
     params: BatchCreateAidPackagesParams,
   ): Promise<BatchCreateAidPackagesResult> {
-    this.ensureContractId();
-    this.logger.debug('Creating batch aid packages:', {
-      count: params.recipientAddresses.length,
-      tokenAddress: params.tokenAddress,
-    });
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] batchCreateAidPackages count=${params.recipientAddresses.length}`,
+    );
 
-    try {
-      const _sdk = await this.loadSorobanSDK();
+    const recipientsScv = this.scvVec(
+      params.recipientAddresses.map(r => this.scvAddress(r)),
+    );
+    const amountsScv = this.scvVec(params.amounts.map(a => this.scvI128(a)));
 
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+    const emptyMetadatas = params.recipientAddresses.map(() => ({}));
+    const metadatasScv = this.scvVec(emptyMetadatas.map(m => this.scvMap(m)));
 
-      // Implementation would call contract's batch_create_packages method
-      const packageIds = params.recipientAddresses.map((_, index) =>
-        index.toString(),
-      );
-      const transactionHash = this.generateMockHash(`batch-${Date.now()}`);
+    const { hash, result } = await this.submitContractOp(
+      'batch_create_packages',
+      [
+        this.scvAddress(params.operatorAddress),
+        recipientsScv,
+        amountsScv,
+        this.scvAddress(params.tokenAddress),
+        this.scvU64(params.expiresIn),
+        metadatasScv,
+      ],
+      cid,
+    );
 
-      return {
-        packageIds,
-        transactionHash,
-        timestamp: new Date(),
-        status: 'success',
-        metadata: {
-          contractId: this.contractId,
-          count: params.recipientAddresses.length,
-        },
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to batch create aid packages:', mappedError);
-      throw error;
+    const ids: string[] = [];
+    if (Array.isArray(result)) {
+      for (const id of result) {
+        ids.push(String(id));
+      }
     }
+
+    return {
+      packageIds: ids,
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      metadata: { contractId: this.contractId, count: ids.length },
+    };
   }
 
   async claimAidPackage(
     params: ClaimAidPackageParams,
   ): Promise<ClaimAidPackageResult> {
-    this.ensureContractId();
-    this.logger.debug('Claiming aid package:', {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] claimAidPackage id=${params.packageId}`);
+
+    const { hash } = await this.submitContractOp(
+      'claim',
+      [this.scvU64(parseInt(params.packageId, 10))],
+      cid,
+    );
+
+    return {
       packageId: params.packageId,
-      recipient: params.recipientAddress,
-    });
-
-    try {
-      const _sdk = await this.loadSorobanSDK();
-
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
-
-      // Implementation would call contract's claim method
-      const transactionHash = this.generateMockHash(
-        `claim-${params.packageId}-${Date.now()}`,
-      );
-
-      return {
-        packageId: params.packageId,
-        transactionHash,
-        timestamp: new Date(),
-        status: 'success',
-        amountClaimed: '1000000000', // Would come from contract
-        metadata: {
-          contractId: this.contractId,
-          recipient: params.recipientAddress,
-        },
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to claim aid package:', mappedError);
-      throw error;
-    }
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      amountClaimed: '',
+      metadata: {
+        contractId: this.contractId,
+        recipient: params.recipientAddress,
+      },
+    };
   }
 
   async disburseAidPackage(
     params: DisburseAidPackageParams,
   ): Promise<DisburseAidPackageResult> {
-    this.ensureContractId();
-    this.logger.debug('Disbursing aid package:', {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] disburseAidPackage id=${params.packageId}`);
+
+    const { hash } = await this.submitContractOp(
+      'disburse',
+      [this.scvU64(parseInt(params.packageId, 10))],
+      cid,
+    );
+
+    return {
       packageId: params.packageId,
-      operator: params.operatorAddress,
-    });
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      amountDisbursed: '',
+      metadata: {
+        contractId: this.contractId,
+        operator: params.operatorAddress,
+      },
+    };
+  }
 
+  async extendAidPackageExpiry(
+    params: ExtendAidPackageExpiryParams,
+  ): Promise<ExtendAidPackageExpiryResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] extendAidPackageExpiry id=${params.packageId} newExpiresAt=${params.newExpiresAt}`,
+    );
+
+    let oldExpiresAt: number | undefined;
     try {
-      const _sdk = await this.loadSorobanSDK();
-
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
-
-      // Implementation would call contract's disburse method
-      const transactionHash = this.generateMockHash(
-        `disburse-${params.packageId}-${Date.now()}`,
-      );
-
-      return {
-        packageId: params.packageId,
-        transactionHash,
-        timestamp: new Date(),
-        status: 'success',
-        amountDisbursed: '1000000000', // Would come from contract
-        metadata: {
-          contractId: this.contractId,
-          operator: params.operatorAddress,
-        },
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to disburse aid package:', mappedError);
-      throw error;
+      const current = await this.getAidPackage({ packageId: params.packageId });
+      if (current?.package) {
+        oldExpiresAt = current.package.expiresAt;
+      }
+    } catch {
+      // Contract will enforce validation checks during transaction simulation
     }
+
+    const { hash } = await this.submitContractOp(
+      'extend_expiry',
+      [
+        this.scvU64(parseInt(params.packageId, 10)),
+        this.scvU64(params.newExpiresAt),
+      ],
+      cid,
+    );
+
+    return {
+      packageId: params.packageId,
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      oldExpiresAt,
+      newExpiresAt: params.newExpiresAt,
+      metadata: {
+        contractId: this.contractId,
+        operator: params.operatorAddress,
+        oldExpiresAt,
+        newExpiresAt: params.newExpiresAt,
+      },
+    };
+  }
+
+  // Alias for contract function naming alignment
+  async extendExpiry(
+    params: ExtendAidPackageExpiryParams,
+  ): Promise<ExtendAidPackageExpiryResult> {
+    return this.extendAidPackageExpiry(params);
   }
 
   async getAidPackage(
     params: GetAidPackageParams,
   ): Promise<GetAidPackageResult> {
-    this.ensureContractId();
-    this.logger.debug('Getting aid package:', params.packageId);
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getAidPackage id=${params.packageId}`);
 
-    try {
-      const _sdk = await this.loadSorobanSDK();
+    const result = await this.simulateReadOnly(
+      'get_package',
+      [this.scvU64(parseInt(params.packageId, 10))],
+      cid,
+    );
 
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+    const pkg = this.parsePackage(result);
 
-      // Implementation would call contract's get_package method
-      // For now, returning a mock response structure
-      const mockPackage: AidPackage = {
+    return {
+      package: pkg ?? {
         id: params.packageId,
-        recipient: 'GBUQWP3BOUZX34ULNQG23RQ6F4BFXWBTRSE53XSTE23JMCVOCJGXVSVZ',
-        amount: '1000000000',
-        token: 'GATEMHCCKCY67ZUCKTROYN24ZYT5GK4EQZ5LKG3FZTSZ3NYNEJBBENSN',
+        recipient: '',
+        amount: '0',
+        token: '',
         status: 'Created',
-        createdAt: Math.floor(Date.now() / 1000),
-        expiresAt: Math.floor(Date.now() / 1000) + 86400 * 30,
-      };
-
-      return {
-        package: mockPackage,
-        timestamp: new Date(),
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to get aid package:', mappedError);
-      throw error;
-    }
+        createdAt: 0,
+        expiresAt: 0,
+      },
+      timestamp: new Date(),
+    };
   }
 
   async getAidPackageCount(
     params: GetAidPackageCountParams,
   ): Promise<GetAidPackageCountResult> {
-    this.ensureContractId();
-    this.logger.debug(
-      'Getting aid package aggregates for token:',
-      params.token,
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getAidPackageCount token=${params.token}`);
+
+    const result = await this.simulateReadOnly(
+      'get_aggregates',
+      [this.scvAddress(params.token)],
+      cid,
     );
 
-    try {
-      const _sdk = await this.loadSorobanSDK();
+    const data = (result as Partial<Aggregates> | undefined) ?? {};
+    return {
+      aggregates: {
+        totalCommitted: String(data.total_committed ?? '0'),
+        totalClaimed: String(data.total_claimed ?? '0'),
+        totalExpiredCancelled: String(data.total_expired_cancelled ?? '0'),
+      },
+      timestamp: new Date(),
+    };
+  }
 
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+  /**
+   * Per-campaign, per-token totals: the contract's `campaign_ref`-scoped
+   * counterparts to `get_aggregates`. A token can back several campaigns, so a
+   * campaign-scoped reconciliation needs these reads rather than the token-wide
+   * aggregate.
+   */
+  async getCampaignTokenTotals(
+    params: GetCampaignTokenTotalsParams,
+  ): Promise<GetCampaignTokenTotalsResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] getCampaignTokenTotals campaign=${params.campaignRef} token=${params.tokenAddress}`,
+    );
 
-      // Implementation would call contract's get_aggregates method
-      // Returns aggregates for the specified token
-      return {
-        aggregates: {
-          totalCommitted: '5000000000',
-          totalClaimed: '2000000000',
-          totalExpiredCancelled: '500000000',
-        },
-        timestamp: new Date(),
-      };
-    } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to get aid package count:', mappedError);
-      throw error;
-    }
+    const [locked, claimed] = await Promise.all([
+      this.simulateReadOnly(
+        'get_campaign_token_locked',
+        [
+          this.scvString(params.campaignRef),
+          this.scvAddress(params.tokenAddress),
+        ],
+        cid,
+      ),
+      this.simulateReadOnly(
+        'get_campaign_token_claimed',
+        [
+          this.scvString(params.campaignRef),
+          this.scvAddress(params.tokenAddress),
+        ],
+        cid,
+      ),
+    ]);
+
+    return {
+      totals: {
+        campaignRef: params.campaignRef,
+        tokenAddress: params.tokenAddress,
+        totalLocked: String(
+          (locked as string | number | bigint | null | undefined) ?? '0',
+        ),
+        totalClaimed: String(
+          (claimed as string | number | bigint | null | undefined) ?? '0',
+        ),
+      },
+      timestamp: new Date(),
+    };
   }
 
   async getTokenBalance(
     params: GetTokenBalanceParams,
   ): Promise<GetTokenBalanceResult> {
-    this.ensureContractId();
-    this.logger.debug('Getting token balance:', {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getTokenBalance token=${params.tokenAddress}`);
+
+    const server = this.getServer();
+    const kp = this.getKeypair();
+    const contract = new Contract(params.tokenAddress);
+    const pubKey = kp.publicKey();
+
+    const account = await server.getAccount(pubKey);
+    const operation = contract.call(
+      'balance',
+      this.scvAddress(params.accountAddress),
+    );
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(operation)
+      .setTimeout(300)
+      .build();
+
+    const simulation = await server.simulateTransaction(tx);
+    let balance = '0';
+    if (
+      SorobanRpc.Api.isSimulationSuccess(simulation) &&
+      simulation.result?.retval
+    ) {
+      balance = String(scValToNative(simulation.result.retval));
+    }
+
+    return {
       tokenAddress: params.tokenAddress,
       accountAddress: params.accountAddress,
+      balance,
+      timestamp: new Date(),
+    };
+  }
+
+  async getContractMetadata(): Promise<ContractMetadata> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getContractMetadata`);
+
+    const version = await this.simulateReadOnly('get_version', [], cid);
+
+    return {
+      version: String((version as string | number) ?? '0'),
+      name: 'Soroban AidEscrow Contract',
+      timestamp: new Date(),
+    };
+  }
+
+  async getContractVersion(params: ContractVersionParams): Promise<number> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    const version = await this.simulateReadOnly(
+      'get_version',
+      [],
+      cid,
+      params.contractId,
+    );
+    const parsed = Number(version);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new Error(
+        `Invalid contract version returned for ${params.contractId}`,
+      );
+    }
+    return parsed;
+  }
+
+  async migrateContract(
+    params: MigrateContractParams,
+  ): Promise<MigrateContractResult> {
+    this.ensureConfigured();
+    if (!Number.isInteger(params.newVersion) || params.newVersion <= 0) {
+      throw new Error('Migration target version must be a positive integer');
+    }
+    const cid = this.correlationId();
+    const previousVersion = await this.getContractVersion({
+      contractId: params.contractId,
     });
+    const { hash } = await this.submitContractOp(
+      'migrate',
+      [this.scvU32(params.newVersion)],
+      cid,
+      params.contractId,
+    );
+    return {
+      contractId: params.contractId,
+      transactionHash: hash,
+      previousVersion,
+      newVersion: params.newVersion,
+      timestamp: new Date(),
+    };
+  }
+
+  async getPauseState(): Promise<PauseState> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getPauseState`);
+
+    const result = await this.simulateReadOnly('is_paused', [], cid);
+
+    return {
+      isPaused: result === true,
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Normalize an `Option<Address>` return value. Soroban encodes `None` as
+   * either a void ScVal or a null native value depending on the SDK version,
+   * so both are collapsed to `null` here.
+   */
+  private normalizeOptionalAddress(value: unknown): string | null {
+    if (typeof value === 'string') {
+      return value.length > 0 ? value : null;
+    }
+    if (typeof value === 'number') {
+      return String(value);
+    }
+    return null;
+  }
+
+  /**
+   * Coerce a decoded ScVal into a non-null string, tolerating null/void.
+   */
+  private readAddress(value: unknown): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (typeof value === 'number') {
+      return String(value);
+    }
+    return '';
+  }
+
+  /**
+   * Read the admin pair, tolerating `get_pending_admin` being unavailable so
+   * a pending-transfer lookup can never fail an otherwise valid state read.
+   */
+  private async readAdminState(
+    correlationId: string,
+    contractId = this.contractId,
+  ): Promise<AdminState> {
+    const adminAddress = await this.simulateReadOnly(
+      'get_admin',
+      [],
+      correlationId,
+      contractId,
+    );
+
+    let pendingAdminAddress: string | null = null;
+    try {
+      pendingAdminAddress = this.normalizeOptionalAddress(
+        await this.simulateReadOnly(
+          'get_pending_admin',
+          [],
+          correlationId,
+          contractId,
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `[${correlationId}] get_pending_admin failed for ${contractId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    return {
+      adminAddress: this.readAddress(adminAddress),
+      pendingAdminAddress,
+      timestamp: new Date(),
+    };
+  }
+
+  async getAdminState(params: AdminTransferParams = {}): Promise<AdminState> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getAdminState`);
+
+    return this.readAdminState(cid, params.contractId ?? this.contractId);
+  }
+
+  async transferAdmin(
+    params: TransferAdminParams,
+  ): Promise<AdminTransferResult> {
+    this.ensureConfigured();
+    const newAdminAddress = params.newAdminAddress?.trim();
+    if (!newAdminAddress) {
+      throw new Error('newAdminAddress is required to propose an admin');
+    }
+
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] transferAdmin contract=${contractId} newAdmin=${newAdminAddress}`,
+    );
+
+    const { hash } = await this.submitContractOp(
+      'transfer_admin',
+      [this.scvAddress(newAdminAddress)],
+      cid,
+      contractId,
+    );
+    const state = await this.readAdminState(cid, contractId);
+
+    return {
+      contractId,
+      transactionHash: hash,
+      adminAddress: state.adminAddress,
+      pendingAdminAddress: state.pendingAdminAddress,
+      timestamp: new Date(),
+    };
+  }
+
+  async acceptAdmin(
+    params: AdminTransferParams = {},
+  ): Promise<AdminTransferResult> {
+    this.ensureConfigured();
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] acceptAdmin contract=${contractId}`);
+
+    const { hash } = await this.submitContractOp(
+      'accept_admin',
+      [],
+      cid,
+      contractId,
+    );
+    const state = await this.readAdminState(cid, contractId);
+
+    return {
+      contractId,
+      transactionHash: hash,
+      adminAddress: state.adminAddress,
+      pendingAdminAddress: state.pendingAdminAddress,
+      timestamp: new Date(),
+    };
+  }
+
+  async cancelAdminTransfer(
+    params: AdminTransferParams = {},
+  ): Promise<AdminTransferResult> {
+    this.ensureConfigured();
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] cancelAdminTransfer contract=${contractId}`);
+
+    const { hash } = await this.submitContractOp(
+      'cancel_admin_transfer',
+      [],
+      cid,
+      contractId,
+    );
+    const state = await this.readAdminState(cid, contractId);
+
+    return {
+      contractId,
+      transactionHash: hash,
+      adminAddress: state.adminAddress,
+      pendingAdminAddress: state.pendingAdminAddress,
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Read the pending surplus withdrawal proposal, or `null` when none exists.
+   *
+   * `get_pending_withdrawal` is a plain getter, so it goes through the
+   * read-only simulation path rather than a signed submission.
+   */
+  async getPendingWithdrawal(
+    params: SurplusWithdrawalParams = {},
+  ): Promise<PendingWithdrawal | null> {
+    this.ensureConfigured();
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getPendingWithdrawal contract=${contractId}`);
+
+    return parsePendingWithdrawal(
+      await this.simulateReadOnly(
+        'get_pending_withdrawal',
+        [],
+        cid,
+        contractId,
+      ),
+    );
+  }
+
+  /**
+   * Step one of the timelocked withdrawal: record the intent to move funds and
+   * start the contract's delay. Nothing is transferred by this call.
+   */
+  async proposeSurplusWithdrawal(
+    params: ProposeSurplusWithdrawalParams,
+  ): Promise<SurplusWithdrawalResult> {
+    this.ensureConfigured();
+    const to = params.to?.trim();
+    const token = params.token?.trim();
+    const amount = params.amount?.trim();
+
+    if (!to) {
+      throw new Error('to is required to propose a surplus withdrawal');
+    }
+    if (!token) {
+      throw new Error('token is required to propose a surplus withdrawal');
+    }
+    if (!amount || !/^\d+$/.test(amount) || BigInt(amount) <= 0n) {
+      throw new Error(
+        'amount must be a positive integer string in the token base unit',
+      );
+    }
+
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] proposeSurplusWithdrawal contract=${contractId} to=${to} token=${token} amount=${amount}`,
+    );
+
+    const { hash } = await this.submitContractOp(
+      'propose_surplus_withdrawal',
+      [this.scvAddress(to), this.scvI128(amount), this.scvAddress(token)],
+      cid,
+      contractId,
+    );
+
+    return {
+      contractId,
+      transactionHash: hash,
+      pendingWithdrawal: await this.getPendingWithdrawal({ contractId }),
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Abandon a pending proposal. Moves no funds.
+   */
+  async cancelSurplusWithdrawal(
+    params: SurplusWithdrawalParams = {},
+  ): Promise<SurplusWithdrawalResult> {
+    this.ensureConfigured();
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] cancelSurplusWithdrawal contract=${contractId}`);
+
+    const { hash } = await this.submitContractOp(
+      'cancel_surplus_withdrawal',
+      [],
+      cid,
+      contractId,
+    );
+
+    return {
+      contractId,
+      transactionHash: hash,
+      pendingWithdrawal: await this.getPendingWithdrawal({ contractId }),
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Step two of the timelocked withdrawal: transfer the proposed funds.
+   *
+   * The delay is checked before submitting so a premature attempt reports the
+   * remaining wait instead of paying for a simulation that the contract will
+   * reject anyway; a contract-side `SurplusWithdrawalTimelockActive` is mapped
+   * onto the same distinct error.
+   */
+  async executeSurplusWithdrawal(
+    params: SurplusWithdrawalParams = {},
+  ): Promise<SurplusWithdrawalResult> {
+    this.ensureConfigured();
+    const contractId = params.contractId ?? this.contractId;
+    const cid = this.correlationId();
+
+    const pending = await this.getPendingWithdrawal({ contractId });
+    if (pending) {
+      const remaining = timelockRemainingSeconds(pending);
+      if (remaining > 0) {
+        throw new SurplusWithdrawalTimelockNotElapsedError(
+          `SurplusWithdrawalTimelockActive: withdrawal of ${pending.amount} to ` +
+            `${pending.to} becomes executable in ${remaining}s ` +
+            `(at ledger timestamp ${pending.executableAt})`,
+          pending.executableAt,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[${cid}] executeSurplusWithdrawal contract=${contractId} amount=${pending?.amount ?? 'unknown'}`,
+    );
+
+    let hash: string;
+    try {
+      ({ hash } = await this.submitContractOp(
+        'execute_surplus_withdrawal',
+        [],
+        cid,
+        contractId,
+      ));
+    } catch (error) {
+      if (isSurplusWithdrawalTimelockError(error)) {
+        throw new SurplusWithdrawalTimelockNotElapsedError(
+          'SurplusWithdrawalTimelockActive: the surplus withdrawal timelock delay has not elapsed',
+          pending?.executableAt ?? null,
+        );
+      }
+      throw error;
+    }
+
+    return {
+      contractId,
+      transactionHash: hash,
+      pendingWithdrawal: await this.getPendingWithdrawal({ contractId }),
+      timestamp: new Date(),
+    };
+  }
+
+  getFeeConfig(): Promise<FeeConfig> {
+    return Promise.resolve({
+      feePercentage: '0',
+      maxFee: '0',
+      timestamp: new Date(),
+    });
+  }
+
+  async getPackageSummary(packageId: string): Promise<PackageSummary> {
+    const pkg = await this.getAidPackage({ packageId });
+    return {
+      packageId,
+      totalAmount: pkg.package.amount,
+      claimedAmount:
+        pkg.package.status === 'Claimed' ? pkg.package.amount : '0',
+      status: pkg.package.status,
+      timestamp: new Date(),
+    };
+  }
+
+  async getTransactionStatus(
+    params: GetTransactionStatusParams,
+  ): Promise<GetTransactionStatusResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    const hash = params.hash.toUpperCase();
+    this.logger.log(`[${cid}] getTransactionStatus hash=${hash}`);
+
+    const server = this.getServer();
 
     try {
-      const _sdk = await this.loadSorobanSDK();
+      const result = await withRetryTimeout(
+        () => server.getTransaction(hash),
+        `getTransaction(${hash})`,
+        cid,
+        { maxRetries: 0, operationTimeoutMs: 30000 },
+        this.logger,
+      );
 
-      const _client = await this.getRpcClient(); // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+      let status: TxStatus;
+      switch (result.status) {
+        case SorobanRpc.Api.GetTransactionStatus.SUCCESS:
+          status = 'succeeded';
+          break;
+        case SorobanRpc.Api.GetTransactionStatus.FAILED:
+          status = 'failed';
+          break;
+        case SorobanRpc.Api.GetTransactionStatus.NOT_FOUND:
+          status = 'pending';
+          break;
+        default:
+          status = 'unknown';
+      }
 
-      // Implementation would call token contract's balance method
-      // This is a placeholder showing the expected response
       return {
-        tokenAddress: params.tokenAddress,
-        accountAddress: params.accountAddress,
-        balance: '10000000000', // Mock balance in stroops
+        hash,
+        status,
         timestamp: new Date(),
+        ledger:
+          'ledger' in result && typeof result.ledger === 'number'
+            ? result.ledger
+            : undefined,
+        errorMessage:
+          status === 'failed' ? this.extractContractError(result) : undefined,
       };
     } catch (error) {
-      const mappedError = this.errorMapper.mapError(error);
-      this.logger.error('Failed to get token balance:', mappedError);
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('timed out')) {
+        return { hash, status: 'unknown', timestamp: new Date() };
+      }
       throw error;
     }
   }
 
-  // Legacy method implementations
   async createClaim(params: CreateClaimParams): Promise<CreateClaimResult> {
-    // Delegate to createAidPackage
-    const aidPackageParams: CreateAidPackageParams = {
-      operatorAddress: 'admin', // Would need to come from context
+    const result = await this.createAidPackage({
+      operatorAddress: '',
       packageId: params.claimId,
       recipientAddress: params.recipientAddress,
       amount: params.amount,
       tokenAddress: params.tokenAddress,
       expiresAt: params.expiresAt ?? Math.floor(Date.now() / 1000) + 86400 * 30,
-    };
-
-    const result = await this.createAidPackage(aidPackageParams);
+    });
     return {
       packageId: result.packageId,
       transactionHash: result.transactionHash,
@@ -411,13 +1265,10 @@ export class SorobanAdapter implements OnchainAdapter {
   }
 
   async disburse(params: DisburseParams): Promise<DisburseResult> {
-    // Delegate to disburseAidPackage
-    const disburseParams: DisburseAidPackageParams = {
+    const result = await this.disburseAidPackage({
       packageId: params.packageId,
-      operatorAddress: params.recipientAddress ?? 'admin',
-    };
-
-    const result = await this.disburseAidPackage(disburseParams);
+      operatorAddress: params.recipientAddress ?? '',
+    });
     return {
       transactionHash: result.transactionHash,
       timestamp: result.timestamp,
@@ -427,11 +1278,140 @@ export class SorobanAdapter implements OnchainAdapter {
     };
   }
 
-  /**
-   * Helper to generate deterministic hashes (used until actual SDK integration)
-   */
-  private generateMockHash(input: string): string {
-    const hash = createHash('sha256').update(input).digest('hex');
-    return hash.substring(0, 64).toUpperCase();
+  async setDelegate(params: SetDelegateParams): Promise<SetDelegateResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] setDelegate packageId=${params.packageId} delegate=${params.delegateAddress}`,
+    );
+
+    const method = params.expiresAt
+      ? 'set_delegate_with_expiry'
+      : 'set_delegate';
+    const args = params.expiresAt
+      ? [
+          this.scvAddress(params.adminAddress),
+          this.scvU64(parseInt(params.packageId, 10)),
+          this.scvAddress(params.delegateAddress),
+          this.scvU64(params.expiresAt),
+        ]
+      : [
+          this.scvAddress(params.adminAddress),
+          this.scvU64(parseInt(params.packageId, 10)),
+          this.scvAddress(params.delegateAddress),
+        ];
+
+    const { hash } = await this.submitContractOp(method, args, cid);
+
+    return {
+      packageId: params.packageId,
+      delegateAddress: params.delegateAddress,
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      expiresAt: params.expiresAt,
+      metadata: {
+        contractId: this.contractId,
+        admin: params.adminAddress,
+        method,
+      },
+    };
+  }
+
+  async revokeDelegate(
+    params: RevokeDelegateParams,
+  ): Promise<RevokeDelegateResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] revokeDelegate packageId=${params.packageId}`);
+
+    const { hash } = await this.submitContractOp(
+      'revoke_delegate',
+      [
+        this.scvAddress(params.adminAddress),
+        this.scvU64(parseInt(params.packageId, 10)),
+      ],
+      cid,
+    );
+
+    return {
+      packageId: params.packageId,
+      transactionHash: hash,
+      timestamp: new Date(),
+      status: 'success',
+      metadata: {
+        contractId: this.contractId,
+        admin: params.adminAddress,
+      },
+    };
+  }
+
+  async getDelegate(params: GetDelegateParams): Promise<GetDelegateResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(`[${cid}] getDelegate packageId=${params.packageId}`);
+
+    const result = await this.simulateReadOnly(
+      'get_delegate_info',
+      [this.scvU64(parseInt(params.packageId, 10))],
+      cid,
+    );
+
+    // result is Option<(Address, Option<u64>)> — either null or [address, expiresAt|null]
+    let delegateAddress: string | undefined;
+    let expiresAt: number | undefined;
+
+    if (result !== null && result !== undefined) {
+      const tuple = result as [string, bigint | null | undefined];
+      if (Array.isArray(tuple) && tuple.length >= 1) {
+        delegateAddress = String(tuple[0]);
+        expiresAt =
+          tuple[1] !== null && tuple[1] !== undefined
+            ? Number(tuple[1])
+            : undefined;
+      }
+    }
+
+    return {
+      packageId: params.packageId,
+      delegateAddress,
+      expiresAt,
+      timestamp: new Date(),
+    };
+  }
+
+  async getDelegateHistory(
+    params: GetDelegateHistoryParams,
+  ): Promise<GetDelegateHistoryResult> {
+    this.ensureConfigured();
+    const cid = this.correlationId();
+    this.logger.log(
+      `[${cid}] getDelegateHistory packageId=${params.packageId}`,
+    );
+
+    const result = await this.simulateReadOnly(
+      'get_delegate_history',
+      [this.scvU64(parseInt(params.packageId, 10))],
+      cid,
+    );
+
+    const rawHistory = Array.isArray(result) ? result : [];
+    const history: DelegateHistoryEntry[] = rawHistory.map((entry: any) => ({
+      packageId: String(entry?.package_id ?? params.packageId),
+      previousDelegate:
+        entry?.previous_delegate != null
+          ? String(entry.previous_delegate)
+          : undefined,
+      newDelegate: String(entry?.new_delegate ?? ''),
+      changedBy: String(entry?.changed_by ?? ''),
+      changedAt: Number(entry?.changed_at ?? 0),
+      reason: String(entry?.reason ?? ''),
+    }));
+
+    return {
+      packageId: params.packageId,
+      history,
+      timestamp: new Date(),
+    };
   }
 }

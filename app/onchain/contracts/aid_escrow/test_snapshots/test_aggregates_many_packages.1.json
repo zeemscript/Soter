@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "200000"
+                  "i128": "400000000"
                 }
               ]
             }
@@ -64,7 +64,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "100000"
+                  "i128": "200000000"
                 }
               ]
             }
@@ -83,7 +83,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                     },
                     {
-                      "i128": "100000"
+                      "i128": "200000000"
                     }
                   ]
                 }
@@ -113,13 +113,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -166,13 +169,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -219,13 +225,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -272,13 +281,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARQG5"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -325,13 +337,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATYON"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -378,13 +393,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVAX5"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -431,13 +449,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXI7N"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -484,13 +505,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYRE5"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -537,13 +561,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2ZMN"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -590,13 +617,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4BV5"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -1263,6 +1293,68 @@
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
             "key": {
+              "symbol": "dlgexp"
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+                "key": {
+                  "symbol": "dlgexp"
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": []
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+            "key": {
+              "symbol": "dlgts"
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+                "key": {
+                  "symbol": "dlgts"
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": []
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
+            "key": {
               "vec": [
                 {
                   "symbol": "pidx"
@@ -1300,7 +1392,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1345,7 +1437,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1390,7 +1482,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1435,7 +1527,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1480,7 +1572,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1525,7 +1617,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1570,7 +1662,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1615,7 +1707,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1660,7 +1752,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1705,7 +1797,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1750,7 +1842,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -1759,6 +1859,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -1815,7 +1923,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1860,7 +1968,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -1869,6 +1985,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -1925,7 +2049,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -1970,7 +2094,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -1979,6 +2111,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2035,7 +2175,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2080,7 +2220,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2089,6 +2237,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2145,7 +2301,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2190,7 +2346,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2199,6 +2363,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2255,7 +2427,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2300,7 +2472,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2309,6 +2489,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2365,7 +2553,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2410,7 +2598,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2419,6 +2615,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2475,7 +2679,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2520,7 +2724,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2529,6 +2741,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2585,7 +2805,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2630,7 +2850,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2639,6 +2867,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2695,7 +2931,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2740,7 +2976,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -2749,6 +2993,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -2805,7 +3057,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -2841,6 +3093,23 @@
                       },
                       {
                         "key": {
+                          "symbol": "claimed"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
+                              },
+                              "val": {
+                                "i128": "50000000"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "config"
                         },
                         "val": {
@@ -2851,6 +3120,14 @@
                               },
                               "val": {
                                 "vec": []
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
                               }
                             },
                             {
@@ -2867,6 +3144,55 @@
                               },
                               "val": {
                                 "i128": "1"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "lastclaim"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATYON"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXI7N"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2ZMN"
+                              },
+                              "val": {
+                                "u64": "0"
                               }
                             }
                           ]
@@ -3130,7 +3456,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "100000"
+                        "i128": "200000000"
                       }
                     },
                     {
@@ -3200,7 +3526,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "95000"
+                        "i128": "150000000"
                       }
                     },
                     {
@@ -3270,7 +3596,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
                       }
                     },
                     {
@@ -3340,7 +3666,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
                       }
                     },
                     {
@@ -3410,7 +3736,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
                       }
                     },
                     {
@@ -3480,7 +3806,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
                       }
                     },
                     {
@@ -3550,7 +3876,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
                       }
                     },
                     {

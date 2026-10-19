@@ -4,9 +4,11 @@ import { AnalyticsService } from './analytics.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisService } from '../../cache/redis.service';
 import { PrivacyService } from './privacy.service';
+import { MetricsModule } from '../observability/metrics/metrics.module';
+import { OnchainModule } from '../onchain/onchain.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, MetricsModule, OnchainModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,

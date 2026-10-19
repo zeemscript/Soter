@@ -1,7 +1,10 @@
+import { AppException } from '../common/dto/error-response.dto';
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+
 import { AuditService } from './audit.service';
+import { AuditChainService } from './audit-chain.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MetricsService } from './metrics.service';
 
 describe('AuditService', () => {
   let service: AuditService;
@@ -26,6 +29,27 @@ describe('AuditService', () => {
     $transaction: jest.fn().mockResolvedValue([[mockRow], 1]),
   };
 
+  const mockMetricsService = {
+    dbQueryDuration: {
+      startTimer: jest.fn(() => jest.fn()),
+    },
+    dbErrorsTotal: {
+      inc: jest.fn(),
+    },
+  };
+
+  const mockAuditChainService = {
+    appendToChain: jest.fn().mockResolvedValue({
+      id: 'log-1',
+      sequence: '1',
+      prevHash: '0'.repeat(64),
+      entryHash: 'a'.repeat(64),
+      metadataCanonical: '{}',
+    }),
+    verifyChain: jest.fn(),
+    backfillChain: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -33,6 +57,14 @@ describe('AuditService', () => {
         {
           provide: PrismaService,
           useValue: mockPrisma,
+        },
+        {
+          provide: MetricsService,
+          useValue: mockMetricsService,
+        },
+        {
+          provide: AuditChainService,
+          useValue: mockAuditChainService,
         },
       ],
     }).compile();
@@ -46,7 +78,7 @@ describe('AuditService', () => {
   });
 
   describe('record', () => {
-    it('should call prisma.auditLog.create', async () => {
+    it('should delegate to the hash-chain append path', async () => {
       const params = {
         actorId: 'user-1',
         entity: 'campaign',
@@ -55,15 +87,43 @@ describe('AuditService', () => {
         metadata: { name: 'test' },
       };
       await service.record(params);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      expect(prisma.auditLog.create).toHaveBeenCalledWith({
-        data: {
+
+      expect(mockAuditChainService.appendToChain).toHaveBeenCalledWith(params);
+    });
+
+    it('should return the chained entry', async () => {
+      const result = await service.record({
+        actorId: 'user-1',
+        entity: 'campaign',
+        entityId: 'c-1',
+        action: 'create',
+      });
+
+      expect(result).toEqual({
+        id: 'log-1',
+        sequence: '1',
+        prevHash: '0'.repeat(64),
+        entryHash: 'a'.repeat(64),
+        metadataCanonical: '{}',
+      });
+    });
+
+    it('should propagate chain append failures', async () => {
+      mockAuditChainService.appendToChain.mockRejectedValueOnce(
+        new Error('chain locked'),
+      );
+
+      await expect(
+        service.record({
           actorId: 'user-1',
           entity: 'campaign',
           entityId: 'c-1',
           action: 'create',
-          metadata: { name: 'test' },
-        },
+        }),
+      ).rejects.toThrow('chain locked');
+      expect(mockMetricsService.dbErrorsTotal.inc).toHaveBeenCalledWith({
+        operation: 'create',
+        entity: 'AuditLog',
       });
     });
   });
@@ -72,7 +132,7 @@ describe('AuditService', () => {
     it('should call prisma.auditLog.findMany', async () => {
       const query = { entity: 'campaign' };
       await service.findLogs(query);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.auditLog.findMany).toHaveBeenCalled();
     });
   });
@@ -112,7 +172,7 @@ describe('AuditService', () => {
 
     it('should use default page=1 and limit=50', async () => {
       await service.exportLogs({});
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 
@@ -123,19 +183,19 @@ describe('AuditService', () => {
 
     it('should pass date range filter when provided', async () => {
       await service.exportLogs({ from: '2024-01-01', to: '2024-12-31' });
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(prisma.$transaction).toHaveBeenCalled();
     });
 
     it('should throw BadRequestException for invalid from date', async () => {
       await expect(service.exportLogs({ from: 'not-a-date' })).rejects.toThrow(
-        BadRequestException,
+        AppException,
       );
     });
 
     it('should throw BadRequestException for invalid to date', async () => {
       await expect(service.exportLogs({ to: 'not-a-date' })).rejects.toThrow(
-        BadRequestException,
+        AppException,
       );
     });
   });

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { RequestCorrelationMiddleware } from '../request-correlation.middleware';
 import { LoggerService } from '../../logger/logger.service';
 import { CORRELATION_ID_HEADER } from '../../common/utils/correlation-id.util';
@@ -41,7 +40,7 @@ describe('RequestCorrelationMiddleware', () => {
       verbose: jest.fn(),
       getLogger: jest.fn(),
       child: jest.fn(),
-    } as unknown as jest.Mocked<LoggerService>;
+    };
 
     middleware = new RequestCorrelationMiddleware(mockLogger);
   });

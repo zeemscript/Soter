@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import type {
   EvidenceArtifact,
   ArtifactViewerState,
   RedactionRegion,
   RedactionTool,
   ViewMode,
-  PIIDetectionResult,
 } from '@/types/evidence-artifact';
 
 interface EvidenceArtifactViewerProps {
@@ -222,10 +222,15 @@ export const EvidenceArtifactViewer: React.FC<EvidenceArtifactViewerProps> = ({
       case 'image':
         return (
           <div className="relative overflow-hidden">
-            <img
+            {/* Evidence content is a blob/data URL, so Next's loader-based
+                optimization cannot apply; unoptimized keeps 1:1 rendering. */}
+            <Image
               ref={imageRef}
               src={content}
               alt={metadata.filename}
+              width={1200}
+              height={900}
+              unoptimized
               className="w-full h-auto"
               style={{
                 transform: `scale(${viewerState.zoomLevel}) translate(${viewerState.panPosition.x}px, ${viewerState.panPosition.y}px)`,
@@ -326,6 +331,7 @@ export const EvidenceArtifactViewer: React.FC<EvidenceArtifactViewerProps> = ({
         <div className="flex items-center space-x-2 mt-3">
           <button
             onClick={handleZoomOut}
+            aria-label="Zoom Out"
             className="p-1 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -337,6 +343,7 @@ export const EvidenceArtifactViewer: React.FC<EvidenceArtifactViewerProps> = ({
           </span>
           <button
             onClick={handleZoomIn}
+            aria-label="Zoom In"
             className="p-1 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -345,6 +352,7 @@ export const EvidenceArtifactViewer: React.FC<EvidenceArtifactViewerProps> = ({
           </button>
           <button
             onClick={handleZoomReset}
+            aria-label="Reset"
             className="p-1 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

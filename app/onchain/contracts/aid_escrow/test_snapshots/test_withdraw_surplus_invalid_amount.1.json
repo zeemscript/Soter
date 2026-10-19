@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "50000000"
                 }
               ]
             }
@@ -64,7 +64,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "50000000"
                 }
               ]
             }
@@ -83,7 +83,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                     },
                     {
-                      "i128": "1000"
+                      "i128": "50000000"
                     }
                   ]
                 }
@@ -281,6 +281,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_expires_in"
                               },
                               "val": {
@@ -428,7 +436,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "50000000"
                       }
                     },
                     {

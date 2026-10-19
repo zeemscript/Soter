@@ -9,8 +9,11 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
+  Version,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiBody,
   ApiOperation,
@@ -22,17 +25,21 @@ import {
   ApiNotFoundResponse,
   ApiTags,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Request } from 'express';
 import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
+import { ExportCampaignsQueryDto } from './dto/export-campaigns.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { streamCsvResponse } from '../common/csv/stream-csv-response';
 import { Roles } from 'src/auth/roles.decorator';
 import { AppRole } from 'src/auth/app-role.enum';
 import { Throttle } from '@nestjs/throttler';
 import { OrgOwnershipGuard } from '../common/guards/org-ownership.guard';
 import { CancelAndReissueService } from '../claims/cancel-and-reissue.service';
+import { BudgetService } from '../common/budget/budget.service';
 
 @ApiTags('Campaigns')
 @ApiBearerAuth('JWT-auth')
@@ -41,6 +48,7 @@ export class CampaignsController {
   constructor(
     private readonly campaigns: CampaignsService,
     private readonly cancelAndReissueService: CancelAndReissueService,
+    private readonly budgetService: BudgetService,
   ) {}
 
   @Post()
@@ -98,6 +106,22 @@ export class CampaignsController {
   async get(@Param('id') id: string) {
     const campaign = await this.campaigns.findOne(id);
     return ApiResponseDto.ok(campaign, 'Campaign fetched successfully');
+  }
+
+  @Get(':id/timeline')
+  @ApiOperation({
+    summary: 'Get campaign milestone timeline',
+    description:
+      'Returns issuance, verification, claim, and disbursement milestones derived from backend and onchain state.',
+  })
+  @ApiOkResponse({ description: 'Campaign timeline retrieved successfully.' })
+  @ApiNotFoundResponse({ description: 'The specified campaign was not found.' })
+  async getTimeline(@Param('id') id: string) {
+    const timeline = await this.campaigns.getTimeline(id);
+    return ApiResponseDto.ok(
+      timeline,
+      'Campaign timeline fetched successfully',
+    );
   }
 
   @Patch(':id')
@@ -184,5 +208,98 @@ export class CampaignsController {
   async getBalance(@Param('id') id: string) {
     const balance = await this.cancelAndReissueService.getCampaignBalance(id);
     return ApiResponseDto.ok(balance, 'Campaign balance fetched successfully');
+  }
+
+  @Get(':id/budget-summary')
+  @ApiOperation({
+    summary: 'Get campaign budget summary',
+    description:
+      'Returns the total, locked, disbursed, and available budget for a campaign.',
+  })
+  @ApiOkResponse({
+    description: 'Campaign budget summary retrieved successfully.',
+    schema: {
+      properties: {
+        campaignId: { type: 'string' },
+        budget: { type: 'number' },
+        locked: { type: 'number' },
+        disbursed: { type: 'number' },
+        available: { type: 'number' },
+      },
+    },
+  })
+  async getBudgetSummary(@Param('id') id: string) {
+    const campaign = await this.campaigns.findOne(id);
+    if (!campaign) {
+      return { error: 'Campaign not found' };
+    }
+    const usage = await this.budgetService.getCampaignBudgetUsage(id);
+    const available = campaign.budget - usage.locked - usage.disbursed;
+    return {
+      campaignId: id,
+      budget: campaign.budget,
+      locked: usage.locked,
+      disbursed: usage.disbursed,
+      available,
+    };
+  }
+
+  @Get('export')
+  @Version('1')
+  @Roles(AppRole.operator, AppRole.admin)
+  @ApiOperation({
+    summary: 'Export campaigns as CSV',
+    description:
+      'Streams campaign summaries as CSV with support for date range, status, and organization filters. ' +
+      'Rows are fetched and written in bounded batches so exporting a large number of campaigns does not ' +
+      'buffer the full result set in memory. Excludes sensitive internal metadata and deleted records.',
+  })
+  @ApiOkResponse({
+    description: 'Campaigns exported successfully as a streamed CSV response.',
+    content: {
+      'text/csv': {
+        schema: { type: 'string' },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Missing or invalid authentication credentials.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Access denied - operator or admin role required.',
+  })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Start date (ISO string)',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'End date (ISO string)',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: 'Campaign status filter',
+  })
+  @ApiQuery({
+    name: 'orgId',
+    required: false,
+    description: 'Organization ID filter',
+  })
+  @ApiQuery({ name: 'ngoId', required: false, description: 'NGO ID filter' })
+  async exportCampaigns(
+    @Query() query: ExportCampaignsQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const total = await this.campaigns.countExport(query);
+
+    await streamCsvResponse(
+      res,
+      `campaigns-export-${Date.now()}.csv`,
+      this.campaigns.streamExportCsv(query),
+      total,
+    );
   }
 }

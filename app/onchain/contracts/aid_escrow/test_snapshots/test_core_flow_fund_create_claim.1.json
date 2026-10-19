@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "10000"
+                  "i128": "100000000"
                 }
               ]
             }
@@ -64,7 +64,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "5000"
+                  "i128": "50000000"
                 }
               ]
             }
@@ -83,7 +83,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                     },
                     {
-                      "i128": "5000"
+                      "i128": "50000000"
                     }
                   ]
                 }
@@ -114,13 +114,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN"
                 },
                 {
                   "u64": "86400"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -361,6 +364,68 @@
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
             "key": {
+              "symbol": "dlgexp"
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+                "key": {
+                  "symbol": "dlgexp"
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": []
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+            "key": {
+              "symbol": "dlgts"
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+                "key": {
+                  "symbol": "dlgts"
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": []
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+            "key": {
               "vec": [
                 {
                   "symbol": "pidx"
@@ -398,7 +463,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -443,7 +508,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -452,6 +525,14 @@
                       },
                       "val": {
                         "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -508,7 +589,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -544,6 +625,23 @@
                       },
                       {
                         "key": {
+                          "symbol": "claimed"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN"
+                              },
+                              "val": {
+                                "i128": "10000000"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "config"
                         },
                         "val": {
@@ -554,6 +652,14 @@
                               },
                               "val": {
                                 "vec": []
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
                               }
                             },
                             {
@@ -577,6 +683,23 @@
                       },
                       {
                         "key": {
+                          "symbol": "lastclaim"
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "locked"
                         },
                         "val": {
@@ -590,6 +713,14 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "pkg_cnt"
+                        },
+                        "val": {
+                          "u64": "102"
                         }
                       },
                       {
@@ -660,7 +791,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "5000"
+                        "i128": "50000000"
                       }
                     },
                     {
@@ -730,7 +861,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "1000"
+                        "i128": "10000000"
                       }
                     },
                     {
@@ -800,7 +931,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "4000"
+                        "i128": "40000000"
                       }
                     },
                     {

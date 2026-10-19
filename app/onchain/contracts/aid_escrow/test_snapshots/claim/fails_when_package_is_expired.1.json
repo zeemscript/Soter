@@ -47,6 +47,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "claim_cooldown"
+                      },
+                      "val": {
+                        "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "max_expires_in"
                       },
                       "val": {
@@ -83,7 +91,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "i128": "150"
+                  "i128": "10000000"
                 }
               ]
             }
@@ -111,13 +119,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "i128": "150"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                 },
                 {
                   "u64": "1003600"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -340,7 +351,7 @@
             },
             "ext": "v0"
           },
-          109
+          1555300
         ]
       ],
       [
@@ -385,7 +396,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "150"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "1000000"
                       }
                     },
                     {
@@ -394,6 +413,14 @@
                       },
                       "val": {
                         "u64": "1000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -450,7 +477,7 @@
             },
             "ext": "v0"
           },
-          109
+          1555300
         ]
       ],
       [
@@ -500,6 +527,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_expires_in"
                               },
                               "val": {
@@ -528,10 +563,18 @@
                                 "address": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF"
                               },
                               "val": {
-                                "i128": "150"
+                                "i128": "10000000"
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "pkg_cnt"
+                        },
+                        "val": {
+                          "u64": "2"
                         }
                       },
                       {
@@ -602,7 +645,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "150"
+                        "i128": "10000000"
                       }
                     },
                     {

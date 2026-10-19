@@ -6,6 +6,16 @@
 
 // Constants
 export * from './constants/api-version.constants';
+export * from './constants/integration-error-codes';
 
 // Decorators
 export * from './decorators/deprecated.decorator';
+
+// Interceptors
+export * from './interceptors/deprecation.interceptor';
+
+// Budget
+export * from './budget/budget.service';
+
+// Errors
+export * from './dto/error-response.dto';

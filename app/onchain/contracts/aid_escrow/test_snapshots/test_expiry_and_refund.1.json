@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 }
               ]
             }
@@ -64,7 +64,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
                 },
                 {
-                  "i128": "1000"
+                  "i128": "10000000"
                 }
               ]
             }
@@ -83,7 +83,7 @@
                       "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
                     },
                     {
-                      "i128": "1000"
+                      "i128": "10000000"
                     }
                   ]
                 }
@@ -113,13 +113,16 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "i128": "500"
+                  "i128": "10000000"
                 },
                 {
                   "address": "CCABDO7UZXYE4W6GVSEGSNNZTKSLFQGKXXQTH6OX7M7GKZ4Z6CUJNGZN"
                 },
                 {
                   "u64": "1100"
+                },
+                {
+                  "map": []
                 }
               ]
             }
@@ -397,7 +400,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -442,7 +445,15 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "500"
+                        "i128": "10000000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "claim_starts_at"
+                      },
+                      "val": {
+                        "u64": "1000"
                       }
                     },
                     {
@@ -451,6 +462,14 @@
                       },
                       "val": {
                         "u64": "1000"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "evidence_hash"
+                      },
+                      "val": {
+                        "string": ""
                       }
                     },
                     {
@@ -507,7 +526,7 @@
             },
             "ext": "v0"
           },
-          4095
+          1555200
         ]
       ],
       [
@@ -557,6 +576,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "claim_cooldown"
+                              },
+                              "val": {
+                                "u64": "0"
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "max_expires_in"
                               },
                               "val": {
@@ -589,6 +616,14 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "pkg_cnt"
+                        },
+                        "val": {
+                          "u64": "2"
                         }
                       },
                       {
@@ -659,7 +694,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "500"
+                        "i128": "10000000"
                       }
                     },
                     {
@@ -729,7 +764,7 @@
                         "symbol": "amount"
                       },
                       "val": {
-                        "i128": "500"
+                        "i128": "0"
                       }
                     },
                     {

@@ -1,6 +1,15 @@
 import * as ExpoLinking from 'expo-linking';
 import SignClient from '@walletconnect/sign-client';
 
+import { config, getStellarChainId } from '../config';
+import {
+  secureRead,
+  secureWrite,
+  secureDelete,
+  SECURE_KEY_WC_SESSION,
+  SecureStorageUnavailableError,
+} from './secureStorage';
+
 const APP_SCHEME = 'soter';
 const DEFAULT_APP_URL = 'https://github.com/Pulsefy/Soter';
 const DEFAULT_ICON = 'https://raw.githubusercontent.com/Pulsefy/Soter/main/app/mobile/assets/icon.png';
@@ -47,19 +56,11 @@ type SessionShape = {
 let signClientPromise: Promise<SignClient> | null = null;
 
 const getWalletConnectProjectId = () => {
-  return process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() ?? '';
+  return config.walletConnectProjectId;
 };
 
 export const getWalletConnectChainId = () => {
-  const override = process.env.EXPO_PUBLIC_WALLETCONNECT_STELLAR_CHAIN_ID?.trim();
-  if (override) {
-    return override;
-  }
-
-  const configuredNetwork = process.env.EXPO_PUBLIC_NETWORK?.trim().toLowerCase();
-  return configuredNetwork === 'mainnet' || configuredNetwork === 'public'
-    ? 'stellar:mainnet'
-    : 'stellar:testnet';
+  return getStellarChainId();
 };
 
 const getAppMetadata = () => ({
@@ -218,7 +219,18 @@ export const createWalletConnection = async () => {
 
   return {
     pairingUri: uri,
-    approval: async () => toConnectedWalletSession(await approval()),
+    approval: async () => {
+      const session = toConnectedWalletSession(await approval());
+
+      // Persist the approved session topic to secure storage.
+      try {
+        await secureWrite(SECURE_KEY_WC_SESSION, session.topic);
+      } catch {
+        // Non-fatal: WalletConnect's own relay store is the source of truth.
+      }
+
+      return session;
+    },
   };
 };
 
@@ -234,8 +246,24 @@ export const restoreWalletSession = async () => {
       return null;
     }
 
-    return toConnectedWalletSession(sessions[0] as SessionShape);
+    const session = sessions[0] as SessionShape;
+    const restored = toConnectedWalletSession(session);
+
+    // Persist the active topic to secure storage so it survives a cold start
+    // even before the WalletConnect relay can confirm the session.
+    // This is a best-effort write — a failure here should not block the restore.
+    try {
+      await secureWrite(SECURE_KEY_WC_SESSION, restored.topic);
+    } catch {
+      // Non-fatal: the SignClient's own store is still the source of truth.
+    }
+
+    return restored;
   } catch (error) {
+    // Re-throw SecureStorageUnavailableError so WalletContext can detect it.
+    if (error instanceof SecureStorageUnavailableError) {
+      throw error;
+    }
     throw new Error(getErrorMessage(error));
   }
 };
@@ -249,6 +277,9 @@ export const disconnectWalletSession = async (topic: string) => {
       message: 'User disconnected.',
     },
   });
+
+  // Remove the session topic from secure storage so no stale reference remains.
+  await secureDelete(SECURE_KEY_WC_SESSION);
 };
 
 export const createWalletCallbackUrl = () => {

@@ -1,14 +1,26 @@
 """
-API v1 router – aggregates all versioned sub-routers.
+API v1 router - aggregates all versioned sub-routers.
 
 Every route defined here lives under the /v1 prefix (mounted in main.py).
-Add new versioned routers to the `include_router` calls below as the
+Add new versioned routers to the include_router calls below as the
 surface grows.
 """
 
 from fastapi import APIRouter
 
-from api.v1 import ocr, inference, proof_of_life, anonymize, humanitarian
+from api.v1 import (
+    ocr,
+    inference,
+    proof_of_life,
+    anonymize,
+    humanitarian,
+    fraud,
+    artifacts,
+    uploads,
+    dead_letter,
+    redaction_preview,
+    decision_audit,
+)
 
 v1_router = APIRouter(prefix="/v1")
 
@@ -17,3 +29,9 @@ v1_router.include_router(inference.router)
 v1_router.include_router(proof_of_life.router)
 v1_router.include_router(anonymize.router)
 v1_router.include_router(humanitarian.router)
+v1_router.include_router(fraud.router)
+v1_router.include_router(artifacts.router)
+v1_router.include_router(uploads.router)
+v1_router.include_router(dead_letter.router)
+v1_router.include_router(redaction_preview.router)
+v1_router.include_router(decision_audit.router)

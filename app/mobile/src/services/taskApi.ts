@@ -1,8 +1,4 @@
-import { Platform } from 'react-native';
-
-const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  (Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000');
+import { apiGet } from './requestLayer';
 
 export type TaskStatus = 'pending' | 'in-progress' | 'completed';
 export type TaskDueState = 'due-today' | 'overdue' | 'upcoming';
@@ -18,22 +14,23 @@ export interface TaskItem {
 
 /** Fetch task list from the backend */
 export const fetchTaskList = async (): Promise<TaskItem[]> => {
-  const response = await fetch(`${API_URL}/tasks`);
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  return response.json();
+  const { data } = await apiGet<TaskItem[]>('/tasks');
+  return data;
 };
 
-/** Fallback mock data used when the backend is unreachable */
+/** Fallback mock data used when the backend is unreachable and no cache exists */
 export const getMockTaskList = (): TaskItem[] => {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('getMockTaskList cannot be used in production builds');
+  }
+
   const now = new Date();
-  
+
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  
+
   const today = new Date(now);
-  
+
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -64,3 +61,4 @@ export const getMockTaskList = (): TaskItem[] => {
     },
   ];
 };
+

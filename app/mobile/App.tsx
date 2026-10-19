@@ -1,10 +1,17 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as ExpoLinking from 'expo-linking';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  NavigationContainerRef,
+} from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '@sentry/react-native';
 import { AppNavigator } from './src/navigation/AppNavigator';
-import { RootStackParamList, deepLinkToNavParams } from './src/navigation/types';
+import {
+  RootStackParamList,
+  deepLinkToNavParams,
+} from './src/navigation/types';
 import { WalletProvider } from './src/contexts/WalletContext';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { BiometricProvider } from './src/contexts/BiometricContext';
@@ -14,6 +21,19 @@ import {
   useNotification,
 } from './src/contexts/NotificationContext';
 import { SaverModeProvider } from './src/contexts/SaverModeContext';
+import { SyncDeferralProvider } from './src/contexts/SyncDeferralContext';
+import { LanguageProvider } from './src/contexts/LanguageContext';
+import { UpdateProvider, useUpdate } from './src/contexts/UpdateContext';
+import {
+  CrashReportingProvider,
+  useCrashReporting,
+} from './src/contexts/CrashReportingContext';
+import { ReleaseNotesModal } from './src/components/ReleaseNotesModal';
+import { ForceUpgradeScreen } from './src/screens/ForceUpgradeScreen';
+import { ForceUpgradeBanner } from './src/components/ForceUpgradeBanner';
+import { NetworkGuardBanner } from './src/components/NetworkGuardBanner';
+import { markColdStartPhase } from './src/startup/coldStartTracker';
+import { SharedDeviceProvider } from './src/contexts/SharedDeviceContext';
 
 // ---------------------------------------------------------------------------
 // Deep-link configuration for React Navigation
@@ -26,11 +46,17 @@ const linking = {
     screens: {
       Home: '',
       AidOverview: 'aid',
+      // EvidenceUpload is declared before AidDetails so the more specific
+      // `aid/:aidId/evidence` path matches first. It is used by the E2E
+      // harness (issue #932) to open evidence capture directly, and by
+      // notification deep links (see DEEP_LINK_SCREEN_MAP).
+      EvidenceUpload: 'aid/:aidId/evidence',
       AidDetails: 'aid/:aidId',
       ClaimReceipt: 'claim/:claimId',
       Settings: 'settings',
       Health: 'health',
       Scanner: 'scanner',
+      SubmissionQueue: 'queue',
     },
   },
 };
@@ -42,13 +68,16 @@ const linking = {
 const AppInner = () => {
   const { navTheme, scheme } = useTheme();
   const { pendingDeepLink, consumeDeepLink } = useNotification();
-  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  const navigationRef =
+    useRef<NavigationContainerRef<RootStackParamList>>(null);
+  const { isForceUpgrade, isLoading } = useUpdate();
+  const [isNavReady, setIsNavReady] = useState(false);
 
   // -----------------------------------------------------------------------
   // Navigate when a deep link is pending (from notification tap)
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (!pendingDeepLink) return;
+    if (!pendingDeepLink || !isNavReady) return;
 
     const navParams = deepLinkToNavParams(pendingDeepLink);
     if (!navParams) {
@@ -56,35 +85,54 @@ const AppInner = () => {
       return;
     }
 
-    // Small delay to ensure the navigation container is ready, especially
-    // on cold-start where the mount may still be in progress.
-    const timer = setTimeout(() => {
-      if (navigationRef.current) {
-        navigationRef.current.navigate(
-          navParams.screen as any,
-          navParams.params as any,
-        );
-      }
+    if (navigationRef.current?.isReady?.()) {
+      navigationRef.current.navigate(
+        navParams.screen as any,
+        navParams.params as any,
+      );
       consumeDeepLink();
-    }, 300);
+    }
+  }, [pendingDeepLink, isNavReady, consumeDeepLink]);
 
-    return () => clearTimeout(timer);
-  }, [pendingDeepLink, consumeDeepLink]);
+  if (isLoading) {
+    return null;
+  }
+
+  if (isForceUpgrade) {
+    return <ForceUpgradeScreen />;
+  }
 
   return (
     <WalletProvider>
-      <BiometricProvider>
-        <SyncProvider>
-          <NavigationContainer
-            linking={linking}
-            theme={navTheme}
-            ref={navigationRef}
-          >
-            <AppNavigator />
-            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-          </NavigationContainer>
-        </SyncProvider>
-      </BiometricProvider>
+      <SharedDeviceProvider>
+        <BiometricProvider>
+          <SyncDeferralProvider>
+            <SyncProvider>
+              {/*
+                NetworkGuardBanner and ForceUpgradeBanner sit outside
+                NavigationContainer so they render on every screen — including
+                HomeScreen on cold start — without needing to be wired into each
+                individual screen.
+              */}
+              <NetworkGuardBanner />
+              <ForceUpgradeBanner />
+              <NavigationContainer
+                linking={linking}
+                theme={navTheme}
+                ref={navigationRef}
+                onReady={() => {
+                  markColdStartPhase('navigationReady');
+                  setIsNavReady(true);
+                }}
+              >
+                <AppNavigator />
+                <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+              </NavigationContainer>
+              <ReleaseNotesModal />
+            </SyncProvider>
+          </SyncDeferralProvider>
+        </BiometricProvider>
+      </SharedDeviceProvider>
     </WalletProvider>
   );
 };
@@ -93,16 +141,48 @@ const AppInner = () => {
 // Root – wraps providers from the outside in
 // ---------------------------------------------------------------------------
 
-export default function App() {
+/**
+ * Wrapper that reads the crash-reporting preference and renders the Sentry
+ * ErrorBoundary around the rest of the app.
+ */
+const CrashReportingGate: React.FC = () => {
+  const { isLoading } = useCrashReporting();
+  // While the preference is loading, render nothing to avoid a flash of the
+  // wrong state. The CrashReportingProvider already handles init.
+  if (isLoading) return null;
+
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <SaverModeProvider>
-          <NotificationProvider>
-            <AppInner />
-          </NotificationProvider>
-        </SaverModeProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        // The ErrorBoundary already reports to Sentry automatically.
+        // We just log for development diagnostics.
+        console.warn('[CrashReportingGate] Caught by ErrorBoundary:', error);
+      }}
+    >
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <LanguageProvider>
+            <UpdateProvider>
+              <SaverModeProvider>
+                <SyncDeferralProvider>
+                  <NotificationProvider>
+                    <AppInner />
+                  </NotificationProvider>
+                </SyncDeferralProvider>
+              </SaverModeProvider>
+            </UpdateProvider>
+          </LanguageProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
+  );
+};
+
+export default function App() {
+  markColdStartPhase('appRenderStart');
+  return (
+    <CrashReportingProvider>
+      <CrashReportingGate />
+    </CrashReportingProvider>
   );
 }

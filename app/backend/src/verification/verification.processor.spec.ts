@@ -7,6 +7,7 @@ import {
   VerificationJobData,
   VerificationResult,
 } from './interfaces/verification-job.interface';
+import { VerificationPriority } from './dto/enqueue-verification.dto';
 
 describe('VerificationProcessor', () => {
   let processor: VerificationProcessor;
@@ -15,6 +16,7 @@ describe('VerificationProcessor', () => {
   const mockJobData: VerificationJobData = {
     claimId: 'test-claim-id',
     timestamp: Date.now(),
+    priority: VerificationPriority.NORMAL,
   };
 
   const mockResult: VerificationResult = {
@@ -65,9 +67,24 @@ describe('VerificationProcessor', () => {
       const result = await processor.process(mockJob);
 
       expect(result).toEqual(mockResult);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(verificationService.processVerification).toHaveBeenCalledWith(
         mockJobData,
+      );
+    });
+
+    it('should log correlationId when present in job data', async () => {
+      const logSpy = jest.spyOn(processor['logger'], 'log');
+      const mockJob = {
+        id: 'job-456',
+        data: { ...mockJobData, correlationId: 'trace-abc-123' },
+        attemptsMade: 0,
+      } as Job<VerificationJobData, VerificationResult, string>;
+
+      await processor.process(mockJob);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('trace-abc-123'),
       );
     });
 
